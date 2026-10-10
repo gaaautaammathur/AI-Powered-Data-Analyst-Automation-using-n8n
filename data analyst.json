@@ -1,0 +1,360 @@
+{
+  "name": "data analyst",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            },
+            {
+              "hour": 0,
+              "minute": 1
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {},
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -2224,
+        -96
+      ],
+      "id": "75a0b78a-bbec-460e-b6e8-5398a4d7dbc5",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "0Cq5lSCwObK8yzZ9",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "attachment_0",
+        "options": {
+          "delimiter": ",",
+          "encoding": "utf-8",
+          "relaxQuotes": true,
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -2096,
+        64
+      ],
+      "id": "f486c7b7-219c-48a7-976a-c420744e0e32",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===== Data Validation =====\n\n// Check if dataset is empty\nif (items.length === 0) {\n  throw new Error(\"Dataset is empty.\");\n}\n\n// Required columns\nconst requiredColumns = [\n  \"OrderID\",\n  \"Date\",\n  \"Region\",\n  \"Product\",\n  \"Salesperson\",\n  \"Quantity\",\n  \"UnitPrice\",\n  \"Revenue\",\n  \"Profit\",\n  \"Channel\"\n];\n\nconst errors = [];\n\nfor (let i = 0; i < items.length; i++) {\n\n  const row = items[i].json;\n\n  // Check required columns\n  for (const col of requiredColumns) {\n    if (!(col in row)) {\n      errors.push(`Row ${i + 1}: Missing column '${col}'`);\n    }\n  }\n\n  // Check for empty values\n  for (const col of requiredColumns) {\n    if (row[col] === \"\" || row[col] === null || row[col] === undefined) {\n      errors.push(`Row ${i + 1}: '${col}' is empty`);\n    }\n  }\n\n  // Revenue must be numeric\n  if (isNaN(Number(row.Revenue))) {\n    errors.push(`Row ${i + 1}: Revenue is not numeric`);\n  }\n\n  // Quantity must be positive\n  if (Number(row.Quantity) <= 0) {\n    errors.push(`Row ${i + 1}: Invalid Quantity`);\n  }\n}\n\n// Stop workflow if validation fails\nif (errors.length > 0) {\n  throw new Error(errors.join(\"\\n\"));\n}\n\n// Pass original dataset to next node\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1952,
+        224
+      ],
+      "id": "1d7010fd-2fbd-468f-b3d3-419128a0f5c7",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -1808,
+        -16
+      ],
+      "id": "96a6a498-5bb3-4eb6-ad4a-bd1ca771cc78",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze and validate the following dataset.\n\n{{ JSON.stringify($json.data) }}",
+        "options": {
+          "systemMessage": "You are a helpYou are a Senior Data Analyst.\n\nYou receive business datasets in JSON format.\n\nYour responsibilities are:\n\n1. Identify duplicate records.\n2. Detect missing values.\n3. Detect inconsistent capitalization.\n4. Detect invalid dates.\n5. Detect non-numeric values in numeric fields.\n6. Detect outliers that look suspicious.\n7. Recommend cleaning actions.\n\nReturn ONLY valid JSON.\n\nResponse format:\n\n{\n  \"duplicates\": [],\n  \"missingValues\": [],\n  \"invalidValues\": [],\n  \"outliers\": [],\n  \"recommendations\": []\n}\n\nDo not explain anything outside the JSON.ful assistant"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -1504,
+        -96
+      ],
+      "id": "afcce28d-3a1e-4c90-8019-56b17c86972f",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {
+          "maxOutputTokens": 4096,
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -1536,
+        336
+      ],
+      "id": "37e335aa-4cdd-4afe-b5f6-f79cb5f10c54",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "wjq65XQ6d5MNV4GR",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Aggregate').first().json.data;\n\nlet totalRevenue = 0;\nlet totalProfit = 0;\nlet totalOrders = data.length;\nlet totalQuantity = 0;\n\nfor (const row of data) {\n  totalRevenue += Number(row.Revenue || 0);\n  totalProfit += Number(row.Profit || 0);\n  totalQuantity += Number(row.Quantity || 0);\n}\n\nconst avgRevenue = totalRevenue / totalOrders;\n\nreturn [\n{\njson:{\ntotalOrders,\ntotalRevenue,\ntotalProfit,\ntotalQuantity,\naverageRevenuePerOrder: Number(avgRevenue.toFixed(2))\n}\n}\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        96
+      ],
+      "id": "a72c2f2a-4231-4285-a6e7-e10da2a88b83",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a senior business analyst.\n\nUsing the following KPI data, write a professional executive summary.\n\nKPIs:\n{{ JSON.stringify($('Code in JavaScript1').first().json, null, 2) }}\n\nThe summary should include:\n\n1. Overall business performance\n2. Revenue analysis\n3. Profit analysis\n4. Order analysis\n5. Business recommendations\n\nKeep it concise (150–250 words) and professional.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -992,
+        96
+      ],
+      "id": "6617fcc4-9a53-40b4-af94-c62d2ded7d8f",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -1024,
+        304
+      ],
+      "id": "ad914f59-92d6-494e-bc55-1c3d090d490b",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "wjq65XQ6d5MNV4GR",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const summary = $('AI Agent1').first().json.output;\n\nconst formattedSummary = summary\n\n// Convert only section headings\n.replace(/\\*\\*Executive Summary:?(.*?)\\*\\*/g,\n'<h2 style=\"color:#0F4C81;margin-top:25px;\">Executive Summary$1</h2>')\n\n.replace(/\\*\\*Overall Business Performance:\\*\\*/g,\n'<h3 style=\"color:#0F4C81;margin:25px 0 12px;border-left:5px solid #1565C0;padding-left:12px;\">Overall Business Performance</h3>')\n\n.replace(/\\*\\*Revenue Analysis:\\*\\*/g,\n'<h3 style=\"color:#0F4C81;margin:25px 0 12px;border-left:5px solid #1565C0;padding-left:12px;\">Revenue Analysis</h3>')\n\n.replace(/\\*\\*Profit Analysis:\\*\\*/g,\n'<h3 style=\"color:#0F4C81;margin:25px 0 12px;border-left:5px solid #1565C0;padding-left:12px;\">Profit Analysis</h3>')\n\n.replace(/\\*\\*Order Analysis:\\*\\*/g,\n'<h3 style=\"color:#0F4C81;margin:25px 0 12px;border-left:5px solid #1565C0;padding-left:12px;\">Order Analysis</h3>')\n\n.replace(/\\*\\*Business Recommendations:\\*\\*/g,\n'<h3 style=\"color:#0F4C81;margin:25px 0 12px;border-left:5px solid #1565C0;padding-left:12px;\">Business Recommendations</h3>')\n\n// Keep all other bold text inline\n.replace(/\\*\\*(.*?)\\*\\*/g,\n'<strong style=\"color:#1565C0;\">$1</strong>')\n\n// Numbered recommendations\n.replace(/^(\\d+)\\.\\s(.*)$/gm,\n'<div style=\"margin:12px 0 12px 20px;\"><strong>$1.</strong> $2</div>')\n\n.replace(/\\n\\n/g,'<br><br>')\n.replace(/\\n/g,'<br>');\nconst kpi = $('Code in JavaScript1').first().json;\n\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n</head>\n\n<body style=\"margin:0;padding:40px;background:#eef3f8;font-family:Segoe UI,Arial,sans-serif;\">\n\n<div style=\"max-width:950px;margin:auto;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.12);\">\n\n<!-- Header -->\n\n<div style=\"background:linear-gradient(135deg,#1565C0,#0D47A1);padding:35px;text-align:center;color:white;\">\n<h1 style=\"margin:0;font-size:34px;\">📊 Sales Analysis Report</h1>\n<p style=\"margin-top:10px;font-size:16px;opacity:.9;\">\nAI Powered Business Intelligence Dashboard\n</p>\n</div>\n\n<!-- Welcome -->\n\n<div style=\"padding:35px;\">\n\n<h2 style=\"color:#0F4C81;margin-top:0;\">Hello Gautam 👋</h2>\n\n<p style=\"font-size:16px;color:#555;line-height:1.7;\">\nYour dataset has been analyzed successfully. Below is an executive overview of your business performance generated automatically using AI.\n</p>\n\n<!-- KPI Cards -->\n\n<h2 style=\"color:#0F4C81;\">📈 Key Performance Indicators</h2>\n\n<table width=\"100%\" cellspacing=\"15\">\n\n<tr>\n\n<td style=\"background:#E3F2FD;border-radius:14px;padding:25px;text-align:center;\">\n<div style=\"font-size:14px;color:#555;\">Total Orders</div>\n<div style=\"font-size:34px;font-weight:bold;color:#1565C0;\">\n${kpi.totalOrders}\n</div>\n</td>\n\n<td style=\"background:#E8F5E9;border-radius:14px;padding:25px;text-align:center;\">\n<div style=\"font-size:14px;color:#555;\">Total Revenue</div>\n<div style=\"font-size:30px;font-weight:bold;color:#2E7D32;\">\n$${Number(kpi.totalRevenue).toLocaleString()}\n</div>\n</td>\n\n</tr>\n\n<tr>\n\n<td style=\"background:#FFF8E1;border-radius:14px;padding:25px;text-align:center;\">\n<div style=\"font-size:14px;color:#555;\">Total Profit</div>\n<div style=\"font-size:30px;font-weight:bold;color:#EF6C00;\">\n$${Number(kpi.totalProfit).toLocaleString()}\n</div>\n</td>\n\n<td style=\"background:#F3E5F5;border-radius:14px;padding:25px;text-align:center;\">\n<div style=\"font-size:14px;color:#555;\">Average Revenue / Order</div>\n<div style=\"font-size:28px;font-weight:bold;color:#7B1FA2;\">\n$${Number(kpi.averageRevenuePerOrder).toLocaleString()}\n</div>\n</td>\n\n</tr>\n\n</table>\n\n<!-- Executive Summary -->\n\n<div style=\"margin-top:40px;padding:30px;background:#FAFAFA;border-left:6px solid #1565C0;border-radius:12px;\">\n\n<h2 style=\"margin-top:0;color:#0F4C81;\">\n📑 Executive Summary\n</h2>\n\n<div style=\"font-size:16px;line-height:1.8;color:#444;\">\n${formattedSummary}\n</div>\n\n</div>\n\n<!-- Footer -->\n\n<div style=\"margin-top:40px;text-align:center;padding-top:20px;border-top:1px solid #ddd;color:#777;font-size:13px;\">\nGenerated automatically using n8n • Google Gemini • JavaScript Analytics\n</div>\n\n</div>\n\n</div>\n\n</body>\n</html>\n`;\n\nreturn [\n  {\n    json: {\n      html\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        96
+      ],
+      "id": "c5969f83-d41e-4c9e-8d9d-3fbcfe6a9932",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Gmail Trigger').item.json.headers.from }}",
+        "subject": "Sales Analysis Report",
+        "message": "={{ $('Code in JavaScript2').first().json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -448,
+        96
+      ],
+      "id": "e20d3525-df03-4fab-8beb-0085e01aa61c",
+      "name": "Send a message",
+      "webhookId": "6b0d8709-ac0b-4563-9eca-30ceb61984fd",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "0Cq5lSCwObK8yzZ9",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.first().json.data;\n\nconst regionRevenue = {};\nconst productRevenue = {};\nconst monthlyRevenue = {};\nconst channelRevenue = {};\nconst salespersonRevenue = {};\n\nlet totalRevenue = 0;\nlet totalProfit = 0;\nlet totalOrders = rows.length;\n\nfor (const row of rows) {\n\n  const revenue = Number(row.Revenue);\n  const profit = Number(row.Profit);\n\n  totalRevenue += revenue;\n  totalProfit += profit;\n\n  // Region\n  regionRevenue[row.Region] = (regionRevenue[row.Region] || 0) + revenue;\n\n  // Product\n  productRevenue[row.Product] = (productRevenue[row.Product] || 0) + revenue;\n\n  // Channel\n  channelRevenue[row.Channel] = (channelRevenue[row.Channel] || 0) + revenue;\n\n  // Salesperson\n  salespersonRevenue[row.Salesperson] =\n    (salespersonRevenue[row.Salesperson] || 0) + revenue;\n\n  // Month\n  const month = row.Date.substring(0,7);\n  monthlyRevenue[month] = (monthlyRevenue[month] || 0) + revenue;\n}\n\nreturn [{\n  json:{\n    totalRevenue,\n    totalProfit,\n    totalOrders,\n\n    regionRevenue,\n    productRevenue,\n    monthlyRevenue,\n    channelRevenue,\n    salespersonRevenue\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1680,
+        224
+      ],
+      "id": "1c999dd7-ed7f-4aef-911c-0a0de88b6a6d",
+      "name": "Code in JavaScript3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "dcfec0f5-0944-4580-8724-0d01797e471b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "159c8397b760b79363c06639682b8497e6a65a5ef9e26aa764d77e0dd2b8224c"
+  },
+  "nodeGroups": [],
+  "id": "nMhu1sx9Wxss75Sg",
+  "tags": []
+}
